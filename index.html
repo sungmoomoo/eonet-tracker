@@ -1,1 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EONET Tracker • NASA Natural Events</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css">
+  <style>
+    body { font-family: 'Segoe UI', system-ui, sans-serif; }
+    .event-card {
+      transition: all 0.3s ease;
+    }
+    .event-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.2);
+    }
+    .map-placeholder {
+      background: linear-gradient(135deg, #1e3a8a, #312e81);
+    }
+  </style>
+</head>
+<body class="bg-zinc-950 text-zinc-200 min-h-screen">
 
+  <div class="max-w-7xl mx-auto p-6">
+    <!-- Header -->
+    <div class="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
+      <div>
+        <h1 class="text-4xl font-bold flex items-center gap-3">
+          <i class="fas fa-globe text-orange-500"></i>
+          EONET Tracker
+        </h1>
+        <p class="text-zinc-400 mt-1">NASA Earth Observatory Natural Event Tracker (v3)</p>
+      </div>
+      
+      <div class="flex items-center gap-4 text-sm">
+        <button onclick="loadEvents()" 
+                class="px-6 py-2 bg-orange-600 hover:bg-orange-700 rounded-full flex items-center gap-2 transition">
+          <i class="fas fa-sync"></i>
+          Refresh
+        </button>
+        <a href="https://eonet.gsfc.nasa.gov/docs/v3" target="_blank"
+           class="text-zinc-400 hover:text-white flex items-center gap-1">
+          API Docs <i class="fas fa-external-link-alt"></i>
+        </a>
+      </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="bg-zinc-900 rounded-2xl p-6 mb-8">
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div>
+          <label class="block text-xs text-zinc-400 mb-1">Search Events</label>
+          <input id="searchInput" 
+                 onkeyup="filterEvents()" 
+                 type="text" 
+                 placeholder="Wildfire, Earthquake..." 
+                 class="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 focus:outline-none focus:border-orange-500">
+        </div>
+
+        <div>
+          <label class="block text-xs text-zinc-400 mb-1">Category</label>
+          <select id="categoryFilter" onchange="filterEvents()" 
+                  class="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 focus:outline-none focus:border-orange-500">
+            <option value="">All Categories</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-xs text-zinc-400 mb-1">Status</label>
+          <select id="statusFilter" onchange="filterEvents()" 
+                  class="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 focus:outline-none focus:border-orange-500">
+            <option value="open">Open Events</option>
+            <option value="closed">Closed Events</option>
+            <option value="all">All Events</option>
+          </select>
+        </div>
+
+        <div class="flex items-end">
+          <button onclick="loadEvents()" 
+                  class="w-full bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-xl py-3 transition">
+            Apply Filters
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div id="stats" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8 text-center">
+      <!-- Populated by JS -->
+    </div>
+
+    <!-- Events Grid -->
+    <div id="eventsGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <!-- Cards populated by JavaScript -->
+    </div>
+
+    <div id="loading" class="hidden text-center py-20">
+      <i class="fas fa-spinner fa-spin text-4xl text-orange-500"></i>
+      <p class="mt-4 text-zinc-400">Loading natural events from NASA...</p>
+    </div>
+
+    <div id="noResults" class="hidden text-center py-20 text-zinc-400">
+      <i class="fas fa-search text-5xl mb-4"></i>
+      <p>No events found matching your filters.</p>
+    </div>
+  </div>
+
+  <footer class="text-center text-zinc-500 text-sm py-8 border-t border-zinc-800 mt-12">
+    Data from <a href="https://eonet.gsfc.nasa.gov" target="_blank" class="hover:text-orange-400">NASA EONET API v3</a> • Built as a demo tracker
+  </footer>
+
+  <script>
+    let allEvents = [];
+    let categories = [];
+
+    const baseUrl = "https://eonet.gsfc.nasa.gov/api/v3";
+
+    async function fetchCategories() {
+      try {
+        const res = await fetch(`${baseUrl}/categories`);
+        const data = await res.json();
+        categories = data;
+        
+        const select = document.getElementById('categoryFilter');
+        categories.forEach(cat => {
+          const option = document.createElement('option');
+          option.value = cat.id;
+          option.textContent = cat.title;
+          select.appendChild(option);
+        });
+      } catch (e) {
+        console.error("Failed to load categories", e);
+      }
+    }
+
+    async function loadEvents() {
+      const loading = document.getElementById('loading');
+      const grid = document.getElementById('eventsGrid');
+      const noResults = document.getElementById('noResults');
+      
+      loading.classList.remove('hidden');
+      grid.innerHTML = '';
+      noResults.classList.add('hidden');
+
+      try {
+        const status = document.getElementById('statusFilter').value;
+        let url = `${baseUrl}/events?status=${status}&limit=200`;
+
+        const res = await fetch(url);
+        const data = await res.json();
+        
+        allEvents = data.events || [];
+        
+        // Update stats
+        updateStats(allEvents);
+        
+        renderEvents(allEvents);
+      } catch (error) {
+        console.error(error);
+        grid.innerHTML = `<div class="col-span-3 text-red-400 text-center py-10">Failed to load events from NASA API.<br>Please check your connection.</div>`;
+      } finally {
+        loading.classList.add('hidden');
+      }
+    }
+
+    function updateStats(events) {
+      const open = events.filter(e => !e.closed).length;
+      const closed = events.filter(e => e.closed).length;
+      
+      const statsHTML = `
+        <div class="bg-zinc-900 rounded-2xl p-4">
+          <p class="text-3xl font-bold text-emerald-400">${open}</p>
+          <p class="text-xs text-zinc-400">OPEN EVENTS</p>
+        </div>
+        <div class="bg-zinc-900 rounded-2xl p-4">
+          <p class="text-3xl font-bold text-amber-400">${closed}</p>
+          <p class="text-xs text-zinc-400">CLOSED EVENTS</p>
+        </div>
+        <div class="bg-zinc-900 rounded-2xl p-4">
+          <p class="text-3xl font-bold">${events.length}</p>
+          <p class="text-xs text-zinc-400">TOTAL LOADED</p>
+        </div>
+        <div class="bg-zinc-900 rounded-2xl p-4">
+          <p class="text-3xl font-bold text-sky-400">${categories.length}</p>
+          <p class="text-xs text-zinc-400">CATEGORIES</p>
+        </div>
+      `;
+      document.getElementById('stats').innerHTML = statsHTML;
+    }
+
+    function getCategoryColor(id) {
+      const colors = {
+        'wildfires': 'bg-red-500',
+        'earthquakes': 'bg-amber-500',
+        'volcanoes': 'bg-purple-500',
+        'severeStorms': 'bg-sky-500',
+        'floods': 'bg-blue-500',
+        'landslides': 'bg-emerald-500'
+      };
+      return colors[id] || 'bg-zinc-500';
+    }
+
+    function renderEvents(events) {
+      const grid = document.getElementById('eventsGrid');
+      grid.innerHTML = '';
+
+      if (events.length === 0) {
+        document.getElementById('noResults').classList.remove('hidden');
+        return;
+      }
+
+      events.forEach(event => {
+        const cat = event.categories && event.categories[0] ? event.categories[0] : {title: 'Other'};
+        const isOpen = !event.closed;
+        
+        const magnitude = event.magnitudeValue 
+          ? `<span class="text-orange-400 font-mono">${event.magnitudeValue} ${event.magnitudeUnit || ''}</span>` 
+          : '';
+
+        const card = document.createElement('div');
+        card.className = `event-card bg-zinc-900 border border-zinc-800 rounded-3xl overflow-hidden`;
+        
+        card.innerHTML = `
+          <div class="p-6">
+            <div class="flex justify-between items-start mb-4">
+              <div class="${getCategoryColor(cat.id)} text-white text-xs font-medium px-3 py-1 rounded-full">
+                ${cat.title}
+              </div>
+              <div class="${isOpen ? 'text-emerald-400' : 'text-zinc-500'} text-xs flex items-center gap-1">
+                <i class="fas fa-circle ${isOpen ? 'animate-pulse' : ''}"></i>
+                ${isOpen ? 'ACTIVE' : 'CLOSED'}
+              </div>
+            </div>
+            
+            <h3 class="text-xl font-semibold leading-tight mb-3 line-clamp-2">${event.title}</h3>
+            
+            ${event.description ? `<p class="text-zinc-400 text-sm line-clamp-3 mb-4">${event.description}</p>` : ''}
+            
+            <div class="flex items-center justify-between text-xs text-zinc-500">
+              <div>${magnitude}</div>
+              <div class="flex items-center gap-1">
+                <i class="fas fa-map-marker-alt"></i>
+                <span>View on map</span>
+              </div>
+            </div>
+          </div>
+          
+          <div class="border-t border-zinc-800 bg-zinc-950 px-6 py-4 flex justify-between items-center text-xs">
+            <a href="${event.link}" target="_blank" 
+               class="text-orange-400 hover:text-orange-300 flex items-center gap-1">
+              API Link <i class="fas fa-external-link-alt"></i>
+            </a>
+            ${event.sources && event.sources.length ? 
+              `<a href="${event.sources[0].url || '#'}" target="_blank" class="text-zinc-400 hover:text-white">Source</a>` : ''}
+          </div>
+        `;
+        
+        grid.appendChild(card);
+      });
+    }
+
+    function filterEvents() {
+      const searchTerm = document.getElementById('searchInput').value.toLowerCase().trim();
+      const categoryId = document.getElementById('categoryFilter').value;
+      const status = document.getElementById('statusFilter').value;
+
+      let filtered = allEvents;
+
+      if (searchTerm) {
+        filtered = filtered.filter(event => 
+          event.title.toLowerCase().includes(searchTerm) ||
+          (event.description && event.description.toLowerCase().includes(searchTerm))
+        );
+      }
+
+      if (categoryId) {
+        filtered = filtered.filter(event => 
+          event.categories && event.categories.some(cat => cat.id === categoryId)
+        );
+      }
+
+      // Status is already handled on fetch, but we can re-filter if needed
+      if (status !== 'all') {
+        filtered = filtered.filter(event => 
+          (status === 'open' && !event.closed) || 
+          (status === 'closed' && event.closed)
+        );
+      }
+
+      renderEvents(filtered);
+    }
+
+    // Initialize
+    window.onload = () => {
+      fetchCategories();
+      loadEvents();
+      
+      // Auto-refresh every 10 minutes
+      setInterval(() => {
+        if (confirm("Refresh events from NASA EONET?")) loadEvents();
+      }, 600000);
+    };
+  </script>
+</body>
+</html>
